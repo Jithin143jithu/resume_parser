@@ -1,7 +1,58 @@
+import streamlit as st
+import pdfplumber
+import re
 import pandas as pd
+from rapidfuzz import fuzz
 
-# ... (rest of the previous code stays same) ...
+# -------------------------------
+# Resume Text Extraction
+# -------------------------------
+def extract_text_from_pdf(file):
+    text = ""
+    with pdfplumber.open(file) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() or ""
+    return text
 
+# -------------------------------
+# Resume Parsing (Simple NLP)
+# -------------------------------
+def parse_resume(text):
+    skills_list = ["python", "java", "sql", "excel", "machine learning",
+                   "deep learning", "react", "node", "php", "cloud",
+                   "aws", "azure", "docker", "kubernetes", "nlp"]
+    found_skills = [s for s in skills_list if s.lower() in text.lower()]
+    return {
+        "skills": found_skills
+    }
+
+# -------------------------------
+# JD Parsing
+# -------------------------------
+def parse_jd(jd_text):
+    skills_list = ["python", "java", "sql", "excel", "machine learning",
+                   "deep learning", "react", "node", "php", "cloud",
+                   "aws", "azure", "docker", "kubernetes", "nlp"]
+    required_skills = [s for s in skills_list if s.lower() in jd_text.lower()]
+    return {"skills_required": required_skills}
+
+# -------------------------------
+# Matching Resume to JD
+# -------------------------------
+def match_resume_to_jd(resume_text, jd_text):
+    return fuzz.token_set_ratio(resume_text.lower(), jd_text.lower())
+
+# -------------------------------
+# Streamlit UI
+# -------------------------------
+st.set_page_config(page_title="AI Resume Parser", layout="wide")
+
+st.title("📄 AI Resume Parser & Ranking Tool")
+
+uploaded_files = st.file_uploader("📂 Upload Resumes (PDF only)", type=["pdf"], accept_multiple_files=True)
+jd_text = st.text_area("📝 Paste Job Description Here")
+
+# Add Submit Button
 if uploaded_files and jd_text:
     if st.button("🚀 Submit for Processing"):
         jd_parsed = parse_jd(jd_text)
