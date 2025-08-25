@@ -4,3 +4,10 @@ pandas
 rapidfuzz
 sentence-transformers
 torch
+
+
+
+
+
+
+openpyxl
