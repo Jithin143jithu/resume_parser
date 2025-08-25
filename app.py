@@ -1,80 +1,72 @@
-import streamlit as st
-import pdfplumber
-from sentence_transformers import SentenceTransformer, util
-import re
+import pandas as pd
 
-# Load embedding model (small & fast)
-@st.cache_resource
-def load_model():
-    return SentenceTransformer("all-MiniLM-L6-v2")
-
-model = load_model()
-
-# --- Acquire: extract text from PDF ---
-def extract_text_from_pdf(file):
-    text = ""
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            text += page.extract_text() + "\n"
-    return text
-
-# --- Yield: simple parsing (skills, education, experience) ---
-def parse_resume(text):
-    skills = re.findall(r"\b(Python|Java|C\+\+|SQL|React|AWS|Docker|Kubernetes)\b", text, re.I)
-    education = re.findall(r"(B\.?Tech|M\.?Tech|BE|MBA|BSc|MSc)", text, re.I)
-    experience_years = len(re.findall(r"\b20[0-9]{2}\b", text))  # rough proxy
-    return {
-        "skills": list(set([s.lower() for s in skills])),
-        "education": education,
-        "experience_years": experience_years
-    }
-
-def parse_jd(text):
-    skills = re.findall(r"\b(Python|Java|C\+\+|SQL|React|AWS|Docker|Kubernetes)\b", text, re.I)
-    return {"skills_required": list(set([s.lower() for s in skills]))}
-
-# --- Yield: matching using embeddings ---
-def match_resume_to_jd(resume_text, jd_text):
-    emb_resume = model.encode(resume_text, convert_to_tensor=True)
-    emb_jd = model.encode(jd_text, convert_to_tensor=True)
-    score = util.cos_sim(emb_resume, emb_jd).item()
-    return round(score, 3)
-
-# --- Streamlit UI (Present) ---
-st.title("📄 AI Resume Parser & Matcher")
-
-uploaded_files = st.file_uploader("Upload Resumes (PDF)", type="pdf", accept_multiple_files=True)
-jd_text = st.text_area("Paste Job Description")
+# ... (rest of the previous code stays same) ...
 
 if uploaded_files and jd_text:
-    jd_parsed = parse_jd(jd_text)
-    st.subheader("🔎 Job Description Parsed Skills")
-    st.write(jd_parsed)
+    if st.button("🚀 Submit for Processing"):
+        jd_parsed = parse_jd(jd_text)
+        st.subheader("🔎 Job Description Parsed Skills")
+        st.write(jd_parsed)
 
-    results = []
-    for file in uploaded_files:
-        resume_text = extract_text_from_pdf(file)
-        parsed = parse_resume(resume_text)
-        score = match_resume_to_jd(resume_text, jd_text)
+        results = []
+        for file in uploaded_files:
+            resume_text = extract_text_from_pdf(file)
+            parsed = parse_resume(resume_text)
+            score = match_resume_to_jd(resume_text, jd_text)
 
-        # coverage check
-        matched = [s for s in parsed["skills"] if s in jd_parsed["skills_required"]]
-        missing = [s for s in jd_parsed["skills_required"] if s not in parsed["skills"]]
+            # coverage check
+            matched = [s for s in parsed["skills"] if s in jd_parsed["skills_required"]]
+            missing = [s for s in jd_parsed["skills_required"] if s not in parsed["skills"]]
 
-        results.append({
-            "name": file.name,
-            "score": score,
-            "skills": parsed["skills"],
-            "matched": matched,
-            "missing": missing
-        })
+            results.append({
+                "name": file.name,
+                "score": score,
+                "skills": parsed["skills"],
+                "matched": matched,
+                "missing": missing
+            })
 
-    # Rank candidates
-    results = sorted(results, key=lambda x: x["score"], reverse=True)
+        # Rank candidates
+        results = sorted(results, key=lambda x: x["score"], reverse=True)
 
-    st.subheader("📊 Candidate Ranking")
-    for r in results:
-        st.markdown(f"**{r['name']}** — Match Score: `{r['score']}`")
-        st.write("✅ Matched Skills:", r["matched"])
-        st.write("❌ Missing Skills:", r["missing"])
-        st.write("---")
+        st.subheader("📊 Candidate Ranking")
+        for r in results:
+            st.markdown(f"**{r['name']}** — Match Score: `{r['score']}`")
+            st.write("✅ Matched Skills:", r["matched"])
+            st.write("❌ Missing Skills:", r["missing"])
+            st.write("---")
+
+        # --- Export Top 5 Resumes ---
+        top_n = min(5, len(results))
+        top_candidates = results[:top_n]
+
+        df = pd.DataFrame([{
+            "File Name": r["name"],
+            "Score": r["score"],
+            "Matched Skills": ", ".join(r["matched"]),
+            "Missing Skills": ", ".join(r["missing"]),
+            "All Extracted Skills": ", ".join(r["skills"])
+        } for r in top_candidates])
+
+        st.subheader("⬇️ Export Top Candidates")
+        st.dataframe(df)
+
+        # CSV Download
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download Top Candidates as CSV",
+            data=csv,
+            file_name="top_candidates.csv",
+            mime="text/csv"
+        )
+
+        # Excel Download
+        excel_file = "top_candidates.xlsx"
+        df.to_excel(excel_file, index=False)
+        with open(excel_file, "rb") as f:
+            st.download_button(
+                label="Download Top Candidates as Excel",
+                data=f,
+                file_name=excel_file,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
